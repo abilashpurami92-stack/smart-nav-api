@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,31 +21,91 @@ const navLinks = [
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("home");
   const location = useLocation();
+  const navigate = useNavigate();
   const isHomePage = location.pathname === "/";
 
-  const getHref = (link: typeof navLinks[0]) => {
-    if (link.isPage) return "/about-game";
-    return isHomePage ? `#${link.section}` : `/#${link.section}`;
-  };
+  // Track active section on scroll (home page only)
+  useEffect(() => {
+    if (!isHomePage) return;
 
-  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, link: typeof navLinks[0]) => {
-    if (link.isPage) return;
+    const handleScroll = () => {
+      const sections = navLinks
+        .filter((l) => !l.isPage)
+        .map((l) => l.section);
 
-    if (isHomePage) {
-      e.preventDefault();
-      const element = document.getElementById(link.section);
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth" });
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const el = document.getElementById(sections[i]);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 100) {
+            setActiveSection(sections[i]);
+            return;
+          }
+        }
       }
+      setActiveSection("home");
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isHomePage]);
+
+  // Handle hash scroll after navigation from another page
+  useEffect(() => {
+    if (isHomePage && location.hash) {
+      const id = location.hash.replace("#", "");
+      setTimeout(() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, [isHomePage, location.hash]);
+
+  const scrollToSection = useCallback(
+    (sectionId: string) => {
+      if (isHomePage) {
+        const el = document.getElementById(sectionId);
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      } else {
+        navigate(`/#${sectionId}`);
+      }
+    },
+    [isHomePage, navigate]
+  );
+
+  const handleNavClick = (
+    e: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>,
+    link: typeof navLinks[0]
+  ) => {
+    e.preventDefault();
+    if (link.isPage) {
+      navigate("/about-game");
+    } else {
+      scrollToSection(link.section);
     }
     setIsOpen(false);
+  };
+
+  const getLinkClass = (link: typeof navLinks[0], isMobile = false) => {
+    const isActive = link.isPage
+      ? location.pathname === "/about-game"
+      : isHomePage && activeSection === link.section;
+
+    const base = isMobile
+      ? "text-lg font-medium transition-colors uppercase tracking-wider py-2"
+      : "text-sm font-medium transition-colors uppercase tracking-wider";
+
+    return `${base} ${isActive ? "text-primary" : "text-muted-foreground hover:text-primary"}`;
   };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 lg:h-20">
+          {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
             <img
               src="/images/logo.png"
@@ -62,37 +122,34 @@ export function Navbar() {
             </div>
           </Link>
 
+          {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-6">
-            {navLinks.map((link) =>
-              link.isPage ? (
-                <Link
-                  key={link.section}
-                  to="/about-game"
-                  className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors uppercase tracking-wider"
-                >
-                  {link.label}
-                </Link>
-              ) : (
-                <a
-                  key={link.section}
-                  href={getHref(link)}
-                  onClick={(e) => handleNavClick(e, link)}
-                  className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors uppercase tracking-wider"
-                >
-                  {link.label}
-                </a>
-              )
-            )}
+            {navLinks.map((link) => (
+              <a
+                key={link.section}
+                href={link.isPage ? "/about-game" : `#${link.section}`}
+                onClick={(e) => handleNavClick(e, link)}
+                className={getLinkClass(link)}
+              >
+                {link.label}
+              </a>
+            ))}
           </nav>
 
+          {/* CTA Button */}
           <div className="hidden lg:flex items-center gap-4">
-            <a href={isHomePage ? "#contact" : "/#contact"}>
-              <Button variant="default" className="font-semibold uppercase tracking-wider">
-                Join Now
-              </Button>
-            </a>
+            <Button
+              variant="default"
+              className="font-semibold uppercase tracking-wider"
+              onClick={(e) =>
+                handleNavClick(e, { section: "contact", label: "Contact" })
+              }
+            >
+              Join Now
+            </Button>
           </div>
 
+          {/* Mobile Menu */}
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild className="lg:hidden">
               <Button variant="ghost" size="icon">
@@ -118,32 +175,24 @@ export function Navbar() {
                 </div>
               </div>
               <nav className="flex flex-col gap-4">
-                {navLinks.map((link) =>
-                  link.isPage ? (
-                    <Link
-                      key={link.section}
-                      to="/about-game"
-                      onClick={() => setIsOpen(false)}
-                      className="text-lg font-medium text-foreground hover:text-primary transition-colors uppercase tracking-wider py-2"
-                    >
-                      {link.label}
-                    </Link>
-                  ) : (
-                    <a
-                      key={link.section}
-                      href={getHref(link)}
-                      onClick={(e) => handleNavClick(e, link)}
-                      className="text-lg font-medium text-foreground hover:text-primary transition-colors uppercase tracking-wider py-2"
-                    >
-                      {link.label}
-                    </a>
-                  )
-                )}
-                <a href={isHomePage ? "#contact" : "/#contact"}>
-                  <Button className="mt-4 w-full font-semibold uppercase tracking-wider">
-                    Join Now
-                  </Button>
-                </a>
+                {navLinks.map((link) => (
+                  <a
+                    key={link.section}
+                    href={link.isPage ? "/about-game" : `#${link.section}`}
+                    onClick={(e) => handleNavClick(e, link)}
+                    className={getLinkClass(link, true)}
+                  >
+                    {link.label}
+                  </a>
+                ))}
+                <Button
+                  className="mt-4 w-full font-semibold uppercase tracking-wider"
+                  onClick={(e) =>
+                    handleNavClick(e, { section: "contact", label: "Contact" })
+                  }
+                >
+                  Join Now
+                </Button>
               </nav>
             </SheetContent>
           </Sheet>
